@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f9; color: #333; }
+    h2 { color: #222; }
+    .section { margin-bottom: 20px; padding: 15px; background: #fff; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    button { padding: 8px 15px; margin-right: 8px; border: none; border-radius: 4px; background: #007acc; color: white; cursor: pointer; }
+    button:hover { background: #005999; }
+    button.stop { background: #d9534f; }
+    button.stop:hover { background: #c9302c; }
+  </style>
+</head>
+<body>
+  <h2>Screen Capture Tool</h2>
+
+  <div class="section">
+    <h3>📷 Screenshot</h3>
+    <button id="snap-full">Entire Screen</button>
+    <button id="snap-snip">Snip Area</button>
+  </div>
+
+  <div class="section">
+    <h3>🎥 Video Recording</h3>
+    <button id="snip">Snip Record</button>
+    <button id="stop" class="stop">Stop Recording</button>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
