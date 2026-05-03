@@ -99,6 +99,8 @@ if (snapBtn) {
 // ================= RECORD FULL SCREEN =================
 
 const startBtn = document.getElementById("snip");
+const pauseBtn = document.getElementById("pause"); // Map new button
+
 if (startBtn) {
   console.log("[Renderer] 'snip' (Start) button listener initialized.");
   startBtn.onclick = async () => {
@@ -125,6 +127,13 @@ if (startBtn) {
         console.log("[Renderer] MediaRecorder stopped. Processing saved chunks...");
         console.log(`[Renderer] Total chunks collected: ${chunks.length}`);
 
+        // Reset the pause button state when recording ends
+        if (pauseBtn) {
+          console.log("[Renderer] Resetting pause button to default.");
+          pauseBtn.disabled = true;
+          pauseBtn.innerText = "Pause";
+        }
+
         const blob = new Blob(chunks, { type: 'video/webm' });
         console.log("[Renderer] Blob created. Size:", blob.size, "bytes. Generating array buffer...");
         
@@ -149,6 +158,13 @@ if (startBtn) {
       console.log("[Renderer] MediaRecorder started! State:", mediaRecorder.state);
       alert('Recording started!');
 
+      // Enable the pause button now that we are recording
+      if (pauseBtn) {
+        console.log("[Renderer] Enabling pause button.");
+        pauseBtn.disabled = false;
+        pauseBtn.innerText = "Pause";
+      }
+
     } catch (err) {
       console.error("[Renderer] Video recording setup failed:", err);
     }
@@ -156,6 +172,38 @@ if (startBtn) {
 } else {
   console.error("[Renderer] ERROR: Could not find HTML element with id='snip'. Check your HTML file.");
 }
+
+
+// ================= PAUSE / RESUME RECORDING =================
+
+if (pauseBtn) {
+  console.log("[Renderer] 'pause' button listener initialized.");
+  pauseBtn.onclick = () => {
+    console.log("[Renderer] Pause/Resume button clicked.");
+    if (!mediaRecorder) {
+      console.warn("[Renderer] Warning: No active MediaRecorder found to pause/resume.");
+      return;
+    }
+
+    // Toggle logic
+    if (mediaRecorder.state === 'recording') {
+      mediaRecorder.pause();
+      console.log("[Renderer] MediaRecorder paused. State:", mediaRecorder.state);
+      pauseBtn.innerText = "Resume";
+    } else if (mediaRecorder.state === 'paused') {
+      mediaRecorder.resume();
+      console.log("[Renderer] MediaRecorder resumed. State:", mediaRecorder.state);
+      pauseBtn.innerText = "Pause";
+    } else {
+      console.warn("[Renderer] Warning: MediaRecorder state is neither 'recording' nor 'paused'. State:", mediaRecorder.state);
+    }
+  };
+} else {
+  console.error("[Renderer] ERROR: Could not find HTML element with id='pause'. Check your HTML file.");
+}
+
+
+// ================= STOP RECORDING =================
 
 const stopBtn = document.getElementById("stop");
 if (stopBtn) {
