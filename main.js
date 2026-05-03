@@ -1,11 +1,7 @@
-const { app, BrowserWindow, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, desktopCapturer } = require('electron');
 const fs = require('fs');
 
 let mainWindow;
-let overlayWindow;
-
-// Disable hardware acceleration to keep transparent windows working smoothly on macOS
-app.disableHardwareAcceleration();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -18,79 +14,77 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
+  mainWindow.webContents.openDevTools();
+
+  // ================= THE FIX IS HERE =================
+  // Intercept the browser's getDisplayMedia call and feed it screen sources
+  mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      console.log("[Main Process] Found screen sources:", sources.map(s => s.name));
+      
+      // Select the first available screen (usually the primary display)
+      callback({ video: sources[0] });
+    }).catch(err => {
+      console.error("[Main Process] Failed to get desktop sources:", err);
+    });
+  });
+  // ===================================================
 }
 
 app.whenReady().then(() => {
   setTimeout(createWindow, 100);
 });
 
-// OPEN SELECTION OVERLAY
-ipcMain.handle('open-overlay', (event, purpose = 'video-record') => {
-  const { width, height, x, y } = screen.getPrimaryDisplay().bounds;
-
-  overlayWindow = new BrowserWindow({
-    x, y, width, height,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    enableLargerThanScreen: true,
-    hasShadow: false,
-    resizable: false,
-    movable: false,
-    backgroundColor: '#00000000',
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
-  });
-
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
-  overlayWindow.setVisibleOnAllWorkspaces(true);
-  overlayWindow.loadFile('overlay.html');
-
-  overlayWindow.purpose = purpose;
-});
-
-// RECEIVE COORDINATES FROM OVERLAY
-ipcMain.on('selection-made', (event, rect) => {
-  const purpose = overlayWindow.purpose;
-  if (overlayWindow) overlayWindow.close();
-
-  // Ask the main window to handle the capture based on purpose
-  if (purpose === 'screenshot-snip') {
-    mainWindow.webContents.send('process-screenshot-snip', { rect });
-  } else {
-    mainWindow.webContents.send('start-recording-area', { rect });
-  }
-});
 
 // DIALOG: Save screenshot to computer
 ipcMain.handle('save-screenshot-dialog', async (event, base64Data) => {
-  const { filePath } = await dialog.showSaveDialog(mainWindow, {
-    title: 'Save Screenshot',
-    defaultPath: `screenshot-${Date.now()}.png`,
-    filters: [{ name: 'Images', extensions: ['png'] }]
-  });
+  console.log("[Main Process] Received 'save-screenshot-dialog' request.");
+  
+  try {
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Screenshot',
+      defaultPath: `screenshot-${Date.now()}.png`,
+      filters: [{ name: 'Images', extensions: ['png'] }]
+    });
 
-  if (filePath) {
-    const base64Image = base64Data.replace(/^data:image\/png;base64,/, "");
-    fs.writeFileSync(filePath, base64Image, 'base64');
-    return true;
+    if (filePath) {
+      console.log(`[Main Process] User selected path for screenshot: ${filePath}`);
+      const base64Image = base64Data.replace(/^data:image\/png;base64,/, "");
+      fs.writeFileSync(filePath, base64Image, 'base64');
+      console.log("[Main Process] Screenshot file successfully written to disk.");
+      return true;
+    } else {
+      console.log("[Main Process] Save dialog cancelled by user.");
+      return false;
+    }
+  } catch (err) {
+    console.error("[Main Process] Error saving screenshot:", err);
+    return false;
   }
-  return false;
 });
 
 // DIALOG: Save video recording to computer
 ipcMain.handle('save-video-dialog', async (event, buffer) => {
-  const { filePath } = await dialog.showSaveDialog(mainWindow, {
-    title: 'Save Video Recording',
-    defaultPath: `recording-${Date.now()}.webm`,
-    filters: [{ name: 'Videos', extensions: ['webm'] }]
-  });
+  console.log("[Main Process] Received 'save-video-dialog' request.");
+  
+  try {
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Video Recording',
+      defaultPath: `recording-${Date.now()}.webm`,
+      filters: [{ name: 'Videos', extensions: ['webm'] }]
+    });
 
-  if (filePath) {
-    fs.writeFileSync(filePath, Buffer.from(buffer));
-    return true;
+    if (filePath) {
+      console.log(`[Main Process] User selected path for video: ${filePath}`);
+      fs.writeFileSync(filePath, Buffer.from(buffer));
+      console.log("[Main Process] Video file successfully written to disk.");
+      return true;
+    } else {
+      console.log("[Main Process] Video save dialog cancelled by user.");
+      return false;
+    }
+  } catch (err) {
+    console.error("[Main Process] Error saving video:", err);
+    return false;
   }
-  return false;
 });

@@ -1,5 +1,3 @@
-
-
 {
   "name": "screen-recorder",
   "version": "1.0.0",
@@ -13,5 +11,9 @@
   "license": "ISC",
   "devDependencies": {
     "electron": "^x.x.x"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "fluent-ffmpeg": "^2.1.3"
   }
 }
