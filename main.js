@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, dialog, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, desktopCapturer, globalShortcut } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
@@ -25,7 +25,32 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => setTimeout(createWindow, 100));
+app.whenReady().then(() => {
+  setTimeout(createWindow, 100);
+
+  // --- REGISTER GLOBAL KEYBOARD SHORTCUTS ---
+
+  // 1. Shortcut to PAUSE / RESUME (Ctrl + Alt + P or Cmd + Option + P)
+  globalShortcut.register('CommandOrControl+Alt+P', () => {
+    console.log("[Main Process] Hotkey pressed: Pause/Resume");
+    if (mainWindow) {
+      mainWindow.webContents.send('hotkey-pause');
+    }
+  });
+
+  // 2. Shortcut to STOP (Ctrl + Alt + S or Cmd + Option + S)
+  globalShortcut.register('CommandOrControl+Alt+S', () => {
+    console.log("[Main Process] Hotkey pressed: Stop");
+    if (mainWindow) {
+      mainWindow.webContents.send('hotkey-stop');
+    }
+  });
+});
+
+// Unregister shortcuts when exiting the app so you don't block other software
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
 
 // --- WINDOW MANAGEMENT ---
 ipcMain.handle('open-overlay', () => {
@@ -88,10 +113,9 @@ ipcMain.handle('save-video-dialog', async (event, buffer) => {
       })
       .run();
   });
-}); // <--- Fixed the missing closing brace and parenthesis here!
+});
 
-
-// --- REVISITED WINDOW ACTION LISTENERS ---
+// --- IPC WINDOW ACTIONS ---
 
 // Minimize the window when recording starts
 ipcMain.on('minimize-app', () => {

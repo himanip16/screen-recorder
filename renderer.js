@@ -190,3 +190,21 @@ if (stopBtn) {
     recorder.stop();
   };
 }
+
+// When user presses Ctrl + Alt + P
+ipcRenderer.on('hotkey-pause', () => {
+  const pauseBtn = document.getElementById('pause');
+  if (pauseBtn && !pauseBtn.disabled) {
+    console.log("[Renderer] Hotkey received: Toggling Pause/Resume via script");
+    pauseBtn.click(); // This triggers your existing pause/resume logic automatically!
+  }
+});
+
+// When user presses Ctrl + Alt + S
+ipcRenderer.on('hotkey-stop', () => {
+  const stopBtn = document.getElementById('stop');
+  if (stopBtn) {
+    console.log("[Renderer] Hotkey received: Stopping recording via script");
+    stopBtn.click(); // This stops the recording and restores the window
+  }
+});
