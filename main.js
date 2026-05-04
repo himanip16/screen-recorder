@@ -1,130 +1,109 @@
-const { app, BrowserWindow, ipcMain, dialog, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
-
-// Import FFmpeg modules
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
-// Point fluent-ffmpeg to the correct downloaded binary
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-let mainWindow;
+let mainWindow, overlayWindow;
+
+app.disableHardwareAcceleration();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 650,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
+    width: 800, height: 650,
+    webPreferences: { nodeIntegration: true, contextIsolation: false }
   });
-
   mainWindow.loadFile('index.html');
-  mainWindow.webContents.openDevTools();
-
-  // ================= THE FIX IS HERE =================
-  // Intercept the browser's getDisplayMedia call and feed it screen sources
+  
+  // Set up screen picker handler for navigator.mediaDevices.getDisplayMedia
   mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      console.log("[Main Process] Found screen sources:", sources.map(s => s.name));
-      
-      // Select the first available screen (usually the primary display)
+    desktopCapturer.getSources({ types: ['screen'] }).then(sources => {
       callback({ video: sources[0] });
-    }).catch(err => {
-      console.error("[Main Process] Failed to get desktop sources:", err);
     });
   });
-  // ===================================================
 }
 
-app.whenReady().then(() => {
-  setTimeout(createWindow, 100);
+app.whenReady().then(() => setTimeout(createWindow, 100));
+
+// --- WINDOW MANAGEMENT ---
+ipcMain.handle('open-overlay', () => {
+  const { width, height, x, y } = screen.getPrimaryDisplay().bounds;
+  overlayWindow = new BrowserWindow({
+    x, y, width, height,
+    frame: false, transparent: true, alwaysOnTop: true,
+    hasShadow: false, resizable: false, movable: false,
+    backgroundColor: '#00000000',
+    webPreferences: { nodeIntegration: true, contextIsolation: false }
+  });
+  overlayWindow.loadFile('overlay.html');
 });
 
-
-// DIALOG: Save screenshot to computer
-ipcMain.handle('save-screenshot-dialog', async (event, base64Data) => {
-  console.log("[Main Process] Received 'save-screenshot-dialog' request.");
-  
-  try {
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Save Screenshot',
-      defaultPath: `screenshot-${Date.now()}.png`,
-      filters: [{ name: 'Images', extensions: ['png'] }]
-    });
-
-    if (filePath) {
-      console.log(`[Main Process] User selected path for screenshot: ${filePath}`);
-      const base64Image = base64Data.replace(/^data:image\/png;base64,/, "");
-      fs.writeFileSync(filePath, base64Image, 'base64');
-      console.log("[Main Process] Screenshot file successfully written to disk.");
-      return true;
-    } else {
-      console.log("[Main Process] Save dialog cancelled by user.");
-      return false;
-    }
-  } catch (err) {
-    console.error("[Main Process] Error saving screenshot:", err);
-    return false;
+ipcMain.on('selection-made', (event, rect) => {
+  if (overlayWindow) overlayWindow.destroy();
+  if (rect && mainWindow) {
+    mainWindow.webContents.send('start-recording-area', { rect });
   }
 });
 
-// UPDATED DIALOG: Save video recording as MP4
+// --- FILE SAVING ---
+ipcMain.handle('save-screenshot-dialog', async (event, base64Data) => {
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Screenshot',
+    defaultPath: `screenshot-${Date.now()}.png`,
+    filters: [{ name: 'Images', extensions: ['png'] }]
+  });
+  if (filePath) {
+    fs.writeFileSync(filePath, base64Data.replace(/^data:image\/png;base64,/, ""), 'base64');
+    return true;
+  }
+  return false;
+});
+
 ipcMain.handle('save-video-dialog', async (event, buffer) => {
-  console.log("[Main Process] Received 'save-video-dialog' request.");
-  
-  try {
-    // 1. Ask the user where to save the MP4 file
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Save Video Recording',
-      defaultPath: `recording-${Date.now()}.mp4`, // Change extension to .mp4
-      filters: [{ name: 'Videos', extensions: ['mp4'] }]
-    });
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Video Recording',
+    defaultPath: `recording-${Date.now()}.mp4`,
+    filters: [{ name: 'Videos', extensions: ['mp4'] }]
+  });
 
-    if (!filePath) {
-      console.log("[Main Process] Video save dialog cancelled by user.");
-      return false;
-    }
+  if (!filePath) return false;
 
-    console.log(`[Main Process] Saving video file: ${filePath}`);
+  const tempWebmPath = path.join(app.getPath('temp'), `temp-${Date.now()}.webm`);
+  fs.writeFileSync(tempWebmPath, Buffer.from(buffer));
 
-    // 2. Define temporary file paths for conversion
-    const tempWebmPath = path.join(app.getPath('temp'), `temp-${Date.now()}.webm`);
+  return new Promise((resolve) => {
+    ffmpeg(tempWebmPath)
+      .output(filePath)
+      .videoCodec('libx264')
+      .audioCodec('aac')
+      .on('end', () => {
+        fs.unlinkSync(tempWebmPath);
+        resolve(true);
+      })
+      .on('error', () => {
+        if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
+        resolve(false);
+      })
+      .run();
+  });
+}); // <--- Fixed the missing closing brace and parenthesis here!
 
-    // 3. Write the initial buffer as a temporary WebM file
-    fs.writeFileSync(tempWebmPath, Buffer.from(buffer));
-    console.log(`[Main Process] Temporary WebM file saved at: ${tempWebmPath}`);
 
-    // 4. Convert WebM to MP4 using FFmpeg
-    return new Promise((resolve, reject) => {
-      ffmpeg(tempWebmPath)
-        .output(filePath)
-        .videoCodec('libx264') // Converts VP8/VP9 video to H.264
-        .audioCodec('aac')     // Converts Opus audio to AAC
-        .on('start', () => {
-          console.log('[Main Process] FFmpeg conversion started.');
-        })
-        .on('end', () => {
-          console.log('[Main Process] FFmpeg conversion completed successfully.');
-          
-          // Delete the temporary WebM file when done
-          fs.unlinkSync(tempWebmPath);
-          resolve(true);
-        })
-        .on('error', (err) => {
-          console.error('[Main Process] FFmpeg error during conversion:', err);
-          
-          // Cleanup temp file if error occurs
-          if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
-          reject(false);
-        })
-        .run();
-    });
+// --- REVISITED WINDOW ACTION LISTENERS ---
 
-  } catch (err) {
-    console.error("[Main Process] Error saving video:", err);
-    return false;
+// Minimize the window when recording starts
+ipcMain.on('minimize-app', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+// Restore the window when recording ends
+ipcMain.on('restore-app', () => {
+  if (mainWindow) {
+    mainWindow.restore();
+    mainWindow.focus();
   }
 });

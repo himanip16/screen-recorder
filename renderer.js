@@ -1,222 +1,192 @@
 const { ipcRenderer } = require('electron');
+const { getScreenStream, createHiddenVideo } = require('./mediaUtils');
+const recorder = require('./recorderManager');
 
-console.log("[Renderer] Script loaded successfully.");
+// DOM Elements
+const snapBtn = document.getElementById('snap-full');
+const startBtn = document.getElementById('snip');
+const areaBtn = document.getElementById('snip-area');
+const pauseBtn = document.getElementById('pause');
+const stopBtn = document.getElementById('stop');
 
-let mediaRecorder;
-let chunks = [];
+// DOM Elements for visual status
+const statusBadge = document.getElementById('recording-status');
+const statusText = document.getElementById('status-text');
 
-// Helper function to get the full screen stream
-async function getStream() {
-  console.log("[Renderer] Attempting to acquire display media stream...");
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: "always" },
-      audio: false
-    });
-    console.log("[Renderer] Display Media stream acquired:", stream);
-    return stream;
-  } catch (error) {
-    console.error("[Renderer] Error in navigator.mediaDevices.getDisplayMedia:", error);
-    throw error;
+// Helper to update the badge color and text
+function updateStatusUI(state) {
+  if (!statusBadge || !statusText) return;
+  statusBadge.className = 'status-badge';
+
+  if (state === 'recording') {
+    statusBadge.classList.add('status-recording');
+    statusText.innerText = 'REC';
+  } else if (state === 'paused') {
+    statusBadge.classList.add('status-paused');
+    statusText.innerText = 'PAUSED';
+  } else {
+    statusBadge.classList.add('status-idle');
+    statusText.innerText = 'Idle';
   }
 }
 
-// Helper to set up a hidden video element
-function createHiddenVideo(stream) {
-  console.log("[Renderer] Creating hidden video element to render stream frames...");
-  const video = document.createElement('video');
-  video.srcObject = stream;
-  
-  // Hide visually but keep it in the DOM
-  video.style.position = 'fixed';
-  video.style.top = '0';
-  video.style.left = '0';
-  video.style.width = '1px';
-  video.style.height = '1px';
-  video.style.opacity = '0';
-  video.style.pointerEvents = 'none';
-  
-  document.body.appendChild(video);
-  console.log("[Renderer] Video element appended to DOM.");
-  return video;
+// Reset UI helper
+function resetUI() {
+  if (pauseBtn) {
+    pauseBtn.disabled = true;
+    pauseBtn.innerText = "Pause";
+  }
+  updateStatusUI('idle');
+  // Always ensure the main window is back up when completely stopped
+  ipcRenderer.send('restore-app');
 }
 
-
-// ================= SCREENSHOT FULL SCREEN =================
-
-const snapBtn = document.getElementById('snap-full');
+// ================= 1. FULL SCREENSHOT =================
 if (snapBtn) {
-  console.log("[Renderer] 'snap-full' button listener initialized.");
   snapBtn.onclick = async () => {
-    console.log("[Renderer] Full Screenshot button clicked.");
     try {
-      const stream = await getStream();
+      const stream = await getScreenStream();
       const video = createHiddenVideo(stream);
 
       video.onloadedmetadata = async () => {
-        console.log("[Renderer] Video metadata loaded. Dimensions:", video.videoWidth, "x", video.videoHeight);
         await video.play();
-        console.log("[Renderer] Video started playing.");
 
-        // Wait for first visual frame
         video.addEventListener('timeupdate', async () => {
-          console.log("[Renderer] 'timeupdate' event fired. Snapping canvas frame now...");
-          
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
 
           const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          console.log("[Renderer] Frame copied to canvas.");
 
-          // Cleanup stream & element
-          console.log("[Renderer] Cleaning up stream tracks and video element...");
-          stream.getTracks().forEach(track => {
-            console.log(`[Renderer] Stopping track: ${track.label}`);
-            track.stop();
-          });
+          stream.getTracks().forEach(track => track.stop());
           video.remove();
 
           const dataUrl = canvas.toDataURL('image/png');
-          console.log("[Renderer] Canvas converted to PNG Data URL. Sending to backend...");
-          
           const saved = await ipcRenderer.invoke('save-screenshot-dialog', dataUrl);
-          console.log("[Renderer] Main process response for screenshot save:", saved);
-
           if (saved) alert('Screenshot saved successfully!');
         }, { once: true });
       };
     } catch (err) {
-      console.error("[Renderer] Screenshot execution crashed:", err);
+      console.error("Screenshot error:", err);
     }
   };
-} else {
-  console.error("[Renderer] ERROR: Could not find HTML element with id='snap-full'. Check your HTML file.");
 }
 
-
-// ================= RECORD FULL SCREEN =================
-
-const startBtn = document.getElementById("snip");
-const pauseBtn = document.getElementById("pause"); // Map new button
-
+// ================= 2. RECORD FULL SCREEN =================
 if (startBtn) {
-  console.log("[Renderer] 'snip' (Start) button listener initialized.");
   startBtn.onclick = async () => {
-    console.log("[Renderer] Start Recording button clicked.");
-    chunks = []; // Reset chunks array
-
     try {
-      const stream = await getStream();
-      console.log("[Renderer] Preparing MediaRecorder with video stream...");
-
-      mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm'
-      });
-      console.log("[Renderer] MediaRecorder initialized successfully. State:", mediaRecorder.state);
-
-      mediaRecorder.ondataavailable = e => {
-        console.log(`[Renderer] Data chunk available: ${e.data.size} bytes`);
-        if (e.data.size > 0) {
-          chunks.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        console.log("[Renderer] MediaRecorder stopped. Processing saved chunks...");
-        console.log(`[Renderer] Total chunks collected: ${chunks.length}`);
-
-        // Reset the pause button state when recording ends
-        if (pauseBtn) {
-          console.log("[Renderer] Resetting pause button to default.");
-          pauseBtn.disabled = true;
-          pauseBtn.innerText = "Pause";
-        }
-
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        console.log("[Renderer] Blob created. Size:", blob.size, "bytes. Generating array buffer...");
-        
-        const buffer = await blob.arrayBuffer();
-        console.log("[Renderer] Array buffer ready. Invoking main process save dialog...");
-
-        const saved = await ipcRenderer.invoke('save-video-dialog', buffer);
-        console.log("[Renderer] Main process response for video save:", saved);
-
+      const stream = await getScreenStream();
+      
+      recorder.start(stream, (saved) => {
         if (saved) alert('Recording saved successfully!');
+        resetUI();
+      });
 
-        // Cleanup
-        console.log("[Renderer] Stopping stream tracks after saving...");
-        stream.getTracks().forEach(track => {
-          console.log(`[Renderer] Stopping track: ${track.label}`);
-          track.stop();
-        });
-      };
+      updateStatusUI('recording');
 
-      // Start recording, grabbing a chunk every 100ms
-      mediaRecorder.start(100);
-      console.log("[Renderer] MediaRecorder started! State:", mediaRecorder.state);
-      alert('Recording started!');
+      // Minimize the app so it doesn't block the screen capture
+      setTimeout(() => {
+        ipcRenderer.send('minimize-app');
+      }, 500);
 
-      // Enable the pause button now that we are recording
       if (pauseBtn) {
-        console.log("[Renderer] Enabling pause button.");
         pauseBtn.disabled = false;
         pauseBtn.innerText = "Pause";
       }
-
     } catch (err) {
-      console.error("[Renderer] Video recording setup failed:", err);
+      console.error("Start recording error:", err);
     }
   };
-} else {
-  console.error("[Renderer] ERROR: Could not find HTML element with id='snip'. Check your HTML file.");
 }
 
+// ================= 3. RECORD AREA =================
+if (areaBtn) {
+  areaBtn.onclick = async () => {
+    await ipcRenderer.invoke('open-overlay');
+  };
+}
 
-// ================= PAUSE / RESUME RECORDING =================
+ipcRenderer.on('start-recording-area', async (event, { rect }) => {
+  try {
+    const stream = await getScreenStream();
+    const video = createHiddenVideo(stream);
 
+    video.onloadedmetadata = async () => {
+      await video.play();
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = rect.width;
+      cropCanvas.height = rect.height;
+      const cropCtx = cropCanvas.getContext('2d');
+
+      function drawFrame() {
+        if (video.paused || video.ended) return;
+        cropCtx.drawImage(
+          video,
+          rect.x, rect.y, rect.width, rect.height,
+          0, 0, rect.width, rect.height
+        );
+        requestAnimationFrame(drawFrame);
+      }
+      drawFrame();
+
+      const croppedStream = cropCanvas.captureStream(30);
+
+      recorder.start(croppedStream, (saved) => {
+        if (saved) alert('Cropped recording saved!');
+        video.remove();
+        resetUI();
+      });
+
+      updateStatusUI('recording');
+
+      // Minimize the app so it doesn't block the cropped area
+      setTimeout(() => {
+        ipcRenderer.send('minimize-app');
+      }, 500);
+
+      if (pauseBtn) {
+        pauseBtn.disabled = false;
+        pauseBtn.innerText = "Pause";
+      }
+    };
+  } catch (err) {
+    console.error("Area recording error:", err);
+  }
+});
+
+// ================= 4. PAUSE / RESUME =================
 if (pauseBtn) {
-  console.log("[Renderer] 'pause' button listener initialized.");
   pauseBtn.onclick = () => {
-    console.log("[Renderer] Pause/Resume button clicked.");
-    if (!mediaRecorder) {
-      console.warn("[Renderer] Warning: No active MediaRecorder found to pause/resume.");
-      return;
-    }
-
-    // Toggle logic
-    if (mediaRecorder.state === 'recording') {
-      mediaRecorder.pause();
-      console.log("[Renderer] MediaRecorder paused. State:", mediaRecorder.state);
+    const state = recorder.getState();
+    if (state === 'recording') {
+      recorder.pause();
       pauseBtn.innerText = "Resume";
-    } else if (mediaRecorder.state === 'paused') {
-      mediaRecorder.resume();
-      console.log("[Renderer] MediaRecorder resumed. State:", mediaRecorder.state);
+      updateStatusUI('paused');
+      
+      // Bring the window back up when paused so user can see control buttons
+      ipcRenderer.send('restore-app');
+      
+    } else if (state === 'paused') {
+      recorder.resume();
       pauseBtn.innerText = "Pause";
-    } else {
-      console.warn("[Renderer] Warning: MediaRecorder state is neither 'recording' nor 'paused'. State:", mediaRecorder.state);
+      updateStatusUI('recording');
+      
+      // Minimize the window again once the user resumes
+      setTimeout(() => {
+        ipcRenderer.send('minimize-app');
+      }, 500);
     }
   };
-} else {
-  console.error("[Renderer] ERROR: Could not find HTML element with id='pause'. Check your HTML file.");
 }
 
-
-// ================= STOP RECORDING =================
-
-const stopBtn = document.getElementById("stop");
+// ================= 5. STOP RECORDING =================
 if (stopBtn) {
-  console.log("[Renderer] 'stop' button listener initialized.");
   stopBtn.onclick = () => {
-    console.log("[Renderer] Stop Recording button clicked.");
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      console.log("[Renderer] Stopping existing MediaRecorder...");
-      mediaRecorder.stop();
-    } else {
-      console.warn("[Renderer] Warning: Either MediaRecorder doesn't exist or it is already inactive.");
-    }
+    // Instantly bring the window up so the user can see the Save file dialog
+    ipcRenderer.send('restore-app');
+    recorder.stop();
   };
-} else {
-  console.error("[Renderer] ERROR: Could not find HTML element with id='stop'. Check your HTML file.");
 }
