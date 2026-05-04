@@ -1,83 +1,217 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Screen Recorder</title>
-  
+  <title>Screen Capture</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-    .controls-container {
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #0f172a; /* Midnight Slate */
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      overflow: hidden;
+      color: #f8fafc;
       display: flex;
       align-items: center;
-      gap: 12px;
-      font-family: sans-serif;
-      margin-top: 20px;
+      justify-content: space-between;
+      padding: 0 10px;
+      -webkit-app-region: drag;
     }
 
+    .drag-handle {
+      display: flex;
+      align-items: center;
+      color: #475569;
+      cursor: grab;
+      margin-right: 2px;
+    }
+
+    .dock-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+
+    .divider {
+      width: 1px;
+      height: 18px;
+      background-color: #334155;
+      margin: 0 2px;
+    }
+
+    /* Buttons */
+    .icon-btn {
+      position: relative;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #94a3b8;
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .icon-btn:hover:not(:disabled) {
+      background-color: #1e293b;
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+
+    .icon-btn:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+
+    #stop:hover {
+      background-color: rgba(239, 68, 68, 0.12);
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    /* Tooltip */
+    [data-tooltip] { position: relative; }
+
+    [data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 38px;
+      left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      background-color: #1e293b;
+      color: #f8fafc;
+      font-size: 10px;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.15s ease;
+      border: 1px solid #334155;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      z-index: 99;
+    }
+
+    [data-tooltip]:hover::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Option Toggle */
+    .audio-toggle {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      padding: 4px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .audio-toggle:hover { background-color: #1e293b; }
+    .audio-toggle input { display: none; }
+    .toggle-icon { color: #64748b; display: flex; align-items: center; }
+    .audio-toggle input:checked + .toggle-icon { color: #38bdf8; }
+
+    /* Compact state badge */
     .status-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      border-radius: 16px;
-      font-size: 13px;
-      font-weight: bold;
-      transition: all 0.3s ease;
+      padding: 4px;
+      border-radius: 6px;
     }
-
-    .status-idle {
-      background-color: #e0e0e0;
-      color: #555;
-    }
-    .status-recording {
-      background-color: #ffebee;
-      color: #c62828;
-    }
-    .status-paused {
-      background-color: #fff3e0;
-      color: #ef6c00;
-    }
-
+    .status-idle { color: #64748b; }
+    .status-recording { color: #ef4444; }
+    .status-paused { color: #f59e0b; }
+    
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background-color: currentColor;
-      display: inline-block;
     }
-
-    .status-recording .status-dot {
-      animation: pulse 1.2s infinite;
-    }
-    .status-paused .status-dot {
-      animation: pulse 1.8s infinite;
-    }
+    .status-recording .status-dot { animation: pulse 1.2s infinite; }
+    .status-paused .status-dot { animation: pulse 1.8s infinite; }
 
     @keyframes pulse {
       0% { opacity: 1; }
       50% { opacity: 0.3; }
       100% { opacity: 1; }
     }
+
+    .close-btn { color: #64748b; }
+    .close-btn:hover {
+      color: #ef4444;
+      background-color: rgba(239, 68, 68, 0.12);
+    }
   </style>
 </head>
 <body>
 
-  <h1>My Screen Recorder</h1>
+  <div class="drag-handle">
+    <i data-lucide="grip-vertical" style="width: 14px; height: 14px;"></i>
+  </div>
 
-<div class="controls-container">
-  <button id="snap-full">Take Screenshot</button>
-  <button id="snip">Record Screen</button>
-  <button id="snip-area">Record Area</button>
-  <button id="pause" disabled>Pause</button>
-  <button id="stop">Stop</button>
+  <div class="dock-row">
+    <button id="snap-full" class="icon-btn" data-tooltip="Full Screenshot">
+      <i data-lucide="image" style="width: 17px; height: 17px;"></i>
+    </button>
+    <button id="snap-area" class="icon-btn" data-tooltip="Area Screenshot">
+      <i data-lucide="camera" style="width: 17px; height: 17px;"></i>
+    </button>
 
-  <label style="font-family: sans-serif; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">
-    <input type="checkbox" id="record-audio" checked> Include Audio
-  </label>
+    <div class="divider"></div>
 
-  <span id="recording-status" class="status-badge status-idle">
-    <span class="status-dot"></span> <span id="status-text">Idle</span>
-  </span>
-</div>
+    <button id="snip" class="icon-btn" data-tooltip="Record Full Screen">
+      <i data-lucide="monitor" style="width: 17px; height: 17px;"></i>
+    </button>
+    <button id="snip-area" class="icon-btn" data-tooltip="Record Area">
+      <i data-lucide="crop" style="width: 17px; height: 17px;"></i>
+    </button>
 
+    <div class="divider"></div>
+
+    <button id="pause" class="icon-btn" disabled data-tooltip="Pause">
+      <i id="pause-icon" data-lucide="pause" style="width: 17px; height: 17px;"></i>
+    </button>
+    <button id="stop" class="icon-btn" data-tooltip="Stop & Save">
+      <i data-lucide="square" style="width: 17px; height: 17px;"></i>
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="dock-row">
+    <label class="audio-toggle" data-tooltip="Microphone Track">
+      <input type="checkbox" id="record-audio" checked>
+      <div class="toggle-icon">
+        <i data-lucide="mic" style="width: 17px; height: 17px;"></i>
+      </div>
+    </label>
+
+    <span id="recording-status" class="status-badge status-idle" data-tooltip="Idle">
+      <span class="status-dot"></span>
+    </span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="dock-row">
+    <button id="close-app" class="icon-btn close-btn" data-tooltip="Close">
+      <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+    </button>
+  </div>
+
+  <script>lucide.createIcons();</script>
   <script src="renderer.js"></script>
 </body>
 </html>

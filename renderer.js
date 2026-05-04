@@ -12,6 +12,16 @@ const stopBtn = document.getElementById('stop');
 // DOM Elements for visual status
 const statusBadge = document.getElementById('recording-status');
 const statusText = document.getElementById('status-text');
+// At the top of renderer.js
+const closeBtn = document.getElementById('close-app');
+
+// Handle manual exit via the new button
+if (closeBtn) {
+  closeBtn.onclick = () => {
+    // Send a command to exit the application cleanly
+    window.close();
+  };
+}
 
 // Helper to update the badge color and text
 function updateStatusUI(state) {
@@ -223,3 +233,35 @@ ipcRenderer.on('hotkey-stop', () => {
     stopBtn.click(); // This stops the recording and restores the window
   }
 });
+
+// This function in renderer.js automatically handles swapping the icons
+function updateStatusUI(state) {
+  if (!statusBadge) return;
+  statusBadge.className = 'status-badge';
+
+  if (state === 'recording') {
+    statusBadge.classList.add('status-recording');
+    statusBadge.setAttribute('data-tooltip', 'Recording');
+    
+    // Change icon to Pause when recording is active
+    pauseBtn.setAttribute('data-tooltip', 'Pause');
+    pauseIcon.setAttribute('data-lucide', 'pause');
+  } else if (state === 'paused') {
+    statusBadge.classList.add('status-paused');
+    statusBadge.setAttribute('data-tooltip', 'Paused');
+    
+    // Change icon to Play/Resume when paused
+    pauseBtn.setAttribute('data-tooltip', 'Resume');
+    pauseIcon.setAttribute('data-lucide', 'play');
+  } else {
+    statusBadge.classList.add('status-idle');
+    statusBadge.setAttribute('data-tooltip', 'Idle');
+    
+    // Reset to default pause icon
+    pauseBtn.setAttribute('data-tooltip', 'Pause');
+    pauseIcon.setAttribute('data-lucide', 'pause');
+  }
+
+  // Force Lucide to re-render and display the correct icon instantly
+  lucide.createIcons();
+}

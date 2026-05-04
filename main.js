@@ -9,15 +9,23 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 let mainWindow, overlayWindow;
 
 app.disableHardwareAcceleration();
-
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800, height: 650,
-    webPreferences: { nodeIntegration: true, contextIsolation: false }
+    width: 560,
+    height: 52,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    hasShadow: true,
+    backgroundColor: '#0f172a', // Premium Midnight Slate
+    webPreferences: { 
+      nodeIntegration: true, 
+      contextIsolation: false 
+    }
   });
+
   mainWindow.loadFile('index.html');
   
-  // Set up screen picker handler for navigator.mediaDevices.getDisplayMedia
   mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then(sources => {
       callback({ video: sources[0] });
