@@ -1,4 +1,5 @@
 const { BrowserWindow, screen, desktopCapturer } = require('electron');
+const path = require('path'); // Ensure path is imported at the very top
 
 let mainWindow = null;
 let overlayWindow = null;
@@ -18,9 +19,8 @@ function createMainWindow() {
     }
   });
 
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
-
-  mainWindow.loadFile('src/renderer/index.html');
+  // Safe file path resolution
+  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   
   mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then(sources => {
@@ -35,12 +35,21 @@ function openOverlay() {
   const { width, height, x, y } = screen.getPrimaryDisplay().bounds;
   overlayWindow = new BrowserWindow({
     x, y, width, height,
-    frame: false, transparent: true, alwaysOnTop: true,
-    hasShadow: false, resizable: false, movable: false,
+    frame: false, 
+    transparent: true, 
+    alwaysOnTop: true,
+    hasShadow: false, 
+    resizable: false, 
+    movable: false,
     backgroundColor: '#00000000',
-    webPreferences: { nodeIntegration: true, contextIsolation: false }
+    webPreferences: { 
+      nodeIntegration: true, 
+      contextIsolation: false 
+    }
   });
-  overlayWindow.loadFile('overlay.html');
+
+  // SAFE FILE PATH: Looks for overlay.html inside the renderer sub-folder
+  overlayWindow.loadFile(path.join(__dirname, '../renderer/overlay.html'));
 }
 
 function closeOverlay() {

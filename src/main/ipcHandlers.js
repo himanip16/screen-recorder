@@ -3,12 +3,15 @@ const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+
+// 1. IMPORT openOverlay from your window manager
 const { openOverlay, closeOverlay, getMainWindow } = require('./windowManager');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 function setupIpcHandlers() {
   ipcMain.handle('open-overlay', () => {
+    // 2. Simply CALL the imported function here
     openOverlay();
   });
 
@@ -57,7 +60,8 @@ function setupIpcHandlers() {
           if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
           resolve(true);
         })
-        .on('error', () => {
+        .on('error', (err) => {
+          console.error(err);
           if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
           resolve(false);
         })

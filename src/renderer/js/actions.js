@@ -85,37 +85,70 @@ if (areaBtn) {
 
 // Overlay response router
 ipcRenderer.on('start-recording-area', async (event, { rect }) => {
+
+  // === 1. Area Screenshot Mode ===
   if (currentAction === 'screenshot-area') {
     try {
       const stream = await getScreenStream(false);
       const video = createHiddenVideo(stream);
 
-      video.onloadedmetadata = async () => {
-        await video.play();
-        video.addEventListener('timeupdate', async () => {
+      video.addEventListener('playing', () => {
+        // A short 150ms timeout ensures the stream frames are buffered
+        setTimeout(async () => {
           const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          // Grab the true, native resolution of the desktop stream
+          const videoWidth = video.videoWidth;
+          const videoHeight = video.videoHeight;
+
+          // Grab logical viewport resolution
+          const screenWidth = window.screen.width;
+          const screenHeight = window.screen.height;
+
+          // Calculate scaling factors to bridge logical vs native sizes
+          const scaleX = videoWidth / screenWidth;
+          const scaleY = videoHeight / screenHeight;
+
+          // Set the canvas size to the exact logical selection
           canvas.width = rect.width;
           canvas.height = rect.height;
 
-          const ctx = canvas.getContext('2d');
+          // Crop and draw applying the scaling adjustments
           ctx.drawImage(
             video,
-            rect.x, rect.y, rect.width, rect.height,
-            0, 0, rect.width, rect.height
+            rect.x * scaleX, 
+            rect.y * scaleY, 
+            rect.width * scaleX, 
+            rect.height * scaleY,
+            0, 0, 
+            rect.width, 
+            rect.height
           );
 
+          // Terminate the active tracks
           stream.getTracks().forEach(t => t.stop());
           video.remove();
 
           const dataUrl = canvas.toDataURL('image/png');
           const saved = await ipcRenderer.invoke('save-screenshot-dialog', dataUrl);
-          if (saved) alert('Area screenshot saved!');
+          
+          if (saved) {
+            alert('Area screenshot saved!');
+          }
           resetUI();
-        }, { once: true });
-      };
-    } catch (e) { console.error("Area snapshot error:", e); resetUI(); }
+        }, 150);
+      }, { once: true });
+
+      await video.play();
+
+    } catch (e) {
+      console.error("Area snapshot error:", e);
+      resetUI();
+    }
     return;
   }
+
 
   if (currentAction === 'record-area') {
     try {
