@@ -1,16 +1,13 @@
-// mediaUtils.js
-
 /**
- * Grabs display media and optionally merges it with microphone audio.
- * @param {boolean} includeAudio Whether to request audio tracks
+ * Captures the screen stream and merges optional audio.
+ * @param {boolean} includeAudio 
+ * @returns {Promise<MediaStream>}
  */
 async function getScreenStream(includeAudio = false) {
-  console.log(`[Utils] Requesting display media stream (audio: ${includeAudio})...`);
   try {
-    // 1. Capture the visual screen
     const videoStream = await navigator.mediaDevices.getDisplayMedia({
       video: { cursor: "always" },
-      audio: false // Screen recording doesn't capture computer sound cleanly this way
+      audio: false
     });
 
     if (!includeAudio) {
@@ -18,17 +15,11 @@ async function getScreenStream(includeAudio = false) {
     }
 
     try {
-      // 2. Capture the microphone audio
-      console.log("[Utils] Capturing microphone audio tracks...");
       const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true
-        },
+        audio: { echoCancellation: true, noiseSuppression: true },
         video: false
       });
 
-      // 3. Combine both screen video and microphone audio tracks together
       const combinedTracks = [
         ...videoStream.getVideoTracks(),
         ...audioStream.getAudioTracks()
@@ -36,16 +27,18 @@ async function getScreenStream(includeAudio = false) {
 
       return new MediaStream(combinedTracks);
     } catch (audioErr) {
-      console.warn("[Utils] Microphone access was denied or failed. Saving video only.", audioErr);
-      return videoStream; // Fallback to video only if the mic fails
+      console.warn("Microphone denied or failed. Capturing video only.", audioErr);
+      return videoStream;
     }
-
   } catch (err) {
-    console.error("[Utils] Failed to get display stream:", err);
+    console.error("Failed to fetch display media stream:", err);
     throw err;
   }
 }
 
+/**
+ * Generates a hidden video element to process frames.
+ */
 function createHiddenVideo(stream) {
   const video = document.createElement('video');
   video.srcObject = stream;
