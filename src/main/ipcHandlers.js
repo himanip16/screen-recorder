@@ -2,12 +2,15 @@ const { ipcMain, dialog, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
-// 1. IMPORT openOverlay from your window manager
+// Set the path directly from the environment variable we set in main.js
+if (process.env.FFMPEG_PATH) {
+  ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
+}
+
+// Import window manager helpers
 const { openOverlay, closeOverlay, getMainWindow } = require('./windowManager');
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 function setupIpcHandlers() {
   ipcMain.handle('open-overlay', () => {
