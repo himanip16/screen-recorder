@@ -150,48 +150,38 @@ ipcRenderer.on('start-recording-area', async (event, { rect }) => {
   }
 
 
+ // === 2. Area Recording Mode ===
+
   if (currentAction === 'record-area') {
     try {
       const includeAudio = audioCheckbox ? audioCheckbox.checked : false;
       const stream = await getScreenStream(includeAudio);
-      const video = createHiddenVideo(stream);
 
-      video.onloadedmetadata = async () => {
-        await video.play();
+      // Measure Retina scaling factors immediately
+      const scaleX = window.devicePixelRatio || 1;
+      const scaleY = window.devicePixelRatio || 1;
 
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = rect.width;
-        cropCanvas.height = rect.height;
-        const cropCtx = cropCanvas.getContext('2d');
-
-        function drawFrame() {
-          if (video.paused || video.ended) return;
-          cropCtx.drawImage(
-            video,
-            rect.x, rect.y, rect.width, rect.height,
-            0, 0, rect.width, rect.height
-          );
-          requestAnimationFrame(drawFrame);
-        }
-        drawFrame();
-
-        const croppedStream = cropCanvas.captureStream(30);
-        const audioTracks = stream.getAudioTracks();
-        if (audioTracks.length > 0) {
-          audioTracks.forEach(track => croppedStream.addTrack(track));
-        }
-
-        recorder.start(croppedStream, (saved) => {
-          if (saved) alert('Area recording saved!');
-          video.remove();
-          resetUI();
-        });
-
-        updateStatusUI('recording');
-        setTimeout(() => ipcRenderer.send('minimize-app'), 500);
-        if (pauseBtn) pauseBtn.disabled = false;
+      // Calculate the physical pixel crop settings for the Mac screen
+      const cropSettings = {
+        x: Math.round(rect.x * scaleX),
+        y: Math.round(rect.y * scaleY),
+        width: Math.round(rect.width * scaleX),
+        height: Math.round(rect.height * scaleY)
       };
-    } catch (err) { console.error("Area record error:", err); resetUI(); }
+
+      // Record the stream natively. When done, pass the cropSettings to the backend.
+      recorder.start(stream, (saved) => {
+        if (saved) alert('Area recording saved!');
+        resetUI();
+      }, cropSettings); // Passing the cropSettings to the recorder
+
+      updateStatusUI('recording');
+      setTimeout(() => ipcRenderer.send('minimize-app'), 500);
+      if (pauseBtn) pauseBtn.disabled = false;
+    } catch (err) {
+      console.error("Area record error:", err);
+      resetUI();
+    }
   }
 });
 

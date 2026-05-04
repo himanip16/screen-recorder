@@ -2,50 +2,42 @@ const { ipcRenderer } = require('electron');
 
 let mediaRecorder = null;
 let recordedChunks = [];
+let currentCrop = null;
 
-function start(stream, onSaveComplete) {
+function start(stream, onSaveComplete, cropSettings = null) {
   recordedChunks = [];
+  currentCrop = cropSettings; // Save the crop configuration for this session
 
-  // Use a standard WebM codec; converted to MP4 on the backend
   mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
 
   mediaRecorder.ondataavailable = (event) => {
-    if (event.data.size > 0) {
-      recordedChunks.push(event.data);
-    }
+    if (event.data.size > 0) recordedChunks.push(event.data);
   };
 
   mediaRecorder.onstop = async () => {
     const blob = new Blob(recordedChunks, { type: 'video/webm' });
     const buffer = Buffer.from(await blob.arrayBuffer());
 
-    // Stop all original stream feeds cleanly
     stream.getTracks().forEach(track => track.stop());
 
-    // Send the buffer to the main process to save as a file
-    const saved = await ipcRenderer.invoke('save-video-dialog', buffer);
+    // Send the buffer along with the crop configuration to the backend
+    const saved = await ipcRenderer.invoke('save-video-dialog', buffer, currentCrop);
     if (onSaveComplete) onSaveComplete(saved);
   };
 
-  mediaRecorder.start(1000); // Saves chunks every 1 second
+  mediaRecorder.start(1000);
 }
 
 function stop() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
 }
 
 function pause() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.pause();
-  }
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.pause();
 }
 
 function resume() {
-  if (mediaRecorder && mediaRecorder.state === 'paused') {
-    mediaRecorder.resume();
-  }
+  if (mediaRecorder && mediaRecorder.state === 'paused') mediaRecorder.resume();
 }
 
 function getState() {

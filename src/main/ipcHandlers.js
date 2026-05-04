@@ -37,7 +37,7 @@ function setupIpcHandlers() {
     return false;
   });
 
-  ipcMain.handle('save-video-dialog', async (event, buffer) => {
+ipcMain.handle('save-video-dialog', async (event, buffer, cropSettings) => {
     const win = getMainWindow();
     const { filePath } = await dialog.showSaveDialog(win, {
       title: 'Save Video Recording',
@@ -51,17 +51,30 @@ function setupIpcHandlers() {
     fs.writeFileSync(tempWebmPath, Buffer.from(buffer));
 
     return new Promise((resolve) => {
-      ffmpeg(tempWebmPath)
+      let ffmpegCommand = ffmpeg(tempWebmPath)
         .output(filePath)
         .videoCodec('libx264')
-        .audioCodec('aac')
-        .videoFilters('format=yuv420p')
+        .audioCodec('aac');
+
+      // Create video filters array
+      let filters = [];
+
+      // Add direct high-performance cropping if valid crop coordinates exist
+      if (cropSettings && cropSettings.width > 0 && cropSettings.height > 0) {
+        filters.push(`crop=${cropSettings.width}:${cropSettings.height}:${cropSettings.x}:${cropSettings.y}`);
+      }
+
+      // Add the "Even Dimensions" rule safety
+      filters.push('scale=trunc(iw/2)*2:trunc(ih/2)*2', 'format=yuv420p');
+
+      // Apply the filters to FFmpeg
+      ffmpegCommand.videoFilters(filters)
         .on('end', () => {
           if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
           resolve(true);
         })
         .on('error', (err) => {
-          console.error(err);
+          console.error("FFmpeg Error:", err.message);
           if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
           resolve(false);
         })
