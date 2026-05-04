@@ -103,8 +103,9 @@ ipcMain.handle('save-video-dialog', async (event, buffer) => {
       .output(filePath)
       .videoCodec('libx264')
       .audioCodec('aac')
+      .videoFilters('format=yuv420p') // <-- THE CRUCIAL QUICKTIME FIX!
       .on('end', () => {
-        fs.unlinkSync(tempWebmPath);
+        if (fs.existsSync(tempWebmPath)) fs.unlinkSync(tempWebmPath);
         resolve(true);
       })
       .on('error', () => {

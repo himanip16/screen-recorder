@@ -62,17 +62,21 @@
 
   <h1>My Screen Recorder</h1>
 
-  <div class="controls-container">
-    <button id="snap-full">Take Screenshot</button>
-    <button id="snip">Record Screen</button>
-    <button id="snip-area">Record Area</button>
-    <button id="pause" disabled>Pause</button>
-    <button id="stop">Stop</button>
+<div class="controls-container">
+  <button id="snap-full">Take Screenshot</button>
+  <button id="snip">Record Screen</button>
+  <button id="snip-area">Record Area</button>
+  <button id="pause" disabled>Pause</button>
+  <button id="stop">Stop</button>
 
-    <span id="recording-status" class="status-badge status-idle">
-      <span class="status-dot"></span> <span id="status-text">Idle</span>
-    </span>
-  </div>
+  <label style="font-family: sans-serif; font-size: 13px; display: inline-flex; align-items: center; gap: 4px;">
+    <input type="checkbox" id="record-audio" checked> Include Audio
+  </label>
+
+  <span id="recording-status" class="status-badge status-idle">
+    <span class="status-dot"></span> <span id="status-text">Idle</span>
+  </span>
+</div>
 
   <script src="renderer.js"></script>
 </body>

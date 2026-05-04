@@ -73,11 +73,16 @@ if (snapBtn) {
   };
 }
 
-// ================= 2. RECORD FULL SCREEN =================
+// 1. Add the checkbox element mapping at the top of renderer.js
+const audioCheckbox = document.getElementById('record-audio');
+
+// 2. Update your start recording handler
 if (startBtn) {
   startBtn.onclick = async () => {
     try {
-      const stream = await getScreenStream();
+      // Check if the user wants audio
+      const includeAudio = audioCheckbox ? audioCheckbox.checked : false;
+      const stream = await getScreenStream(includeAudio);
       
       recorder.start(stream, (saved) => {
         if (saved) alert('Recording saved successfully!');
@@ -86,7 +91,6 @@ if (startBtn) {
 
       updateStatusUI('recording');
 
-      // Minimize the app so it doesn't block the screen capture
       setTimeout(() => {
         ipcRenderer.send('minimize-app');
       }, 500);
@@ -101,16 +105,11 @@ if (startBtn) {
   };
 }
 
-// ================= 3. RECORD AREA =================
-if (areaBtn) {
-  areaBtn.onclick = async () => {
-    await ipcRenderer.invoke('open-overlay');
-  };
-}
-
+// 3. Update your Record Area handler similarly
 ipcRenderer.on('start-recording-area', async (event, { rect }) => {
   try {
-    const stream = await getScreenStream();
+    const includeAudio = audioCheckbox ? audioCheckbox.checked : false;
+    const stream = await getScreenStream(includeAudio);
     const video = createHiddenVideo(stream);
 
     video.onloadedmetadata = async () => {
@@ -132,7 +131,14 @@ ipcRenderer.on('start-recording-area', async (event, { rect }) => {
       }
       drawFrame();
 
+      // Capture visual stream from canvas
       const croppedStream = cropCanvas.captureStream(30);
+
+      // IMPORTANT: If we captured audio tracks, inject them into our cropped canvas stream
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        audioTracks.forEach(track => croppedStream.addTrack(track));
+      }
 
       recorder.start(croppedStream, (saved) => {
         if (saved) alert('Cropped recording saved!');
@@ -142,7 +148,6 @@ ipcRenderer.on('start-recording-area', async (event, { rect }) => {
 
       updateStatusUI('recording');
 
-      // Minimize the app so it doesn't block the cropped area
       setTimeout(() => {
         ipcRenderer.send('minimize-app');
       }, 500);
@@ -156,6 +161,16 @@ ipcRenderer.on('start-recording-area', async (event, { rect }) => {
     console.error("Area recording error:", err);
   }
 });
+
+
+
+// ================= 3. RECORD AREA =================
+if (areaBtn) {
+  areaBtn.onclick = async () => {
+    await ipcRenderer.invoke('open-overlay');
+  };
+}
+
 
 // ================= 4. PAUSE / RESUME =================
 if (pauseBtn) {
